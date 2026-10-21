@@ -2,7 +2,7 @@
 // Each batch is its own transaction on the server, so a failed batch can simply be sent again.
 import type { RawRow } from "./normalize";
 import { readCsv } from "./csv-stream";
-import { missingColumns, REQUIRED_COLUMNS, toSaleRows } from "./sale-rows";
+import { missingColumns, optionalColumnsFound, REQUIRED_COLUMNS, toSaleRows } from "./sale-rows";
 
 export const BATCH = 5000;
 
@@ -22,6 +22,8 @@ export interface Preview {
   header: string[];
   missing: string[];
   missingRequired: string[];
+  /** Optional columns present in the file (Invoice Type, Product Category). */
+  optional: { invoiceType: boolean; productCategory: boolean };
   /** Excel files are read whole up front; CSV files are streamed during the upload. */
   excelRows?: RawRow[];
 }
@@ -54,7 +56,7 @@ export async function previewFile(file: File): Promise<Preview> {
   }
   const missing = missingColumns(header);
   const missingRequired = missing.filter((m) => (REQUIRED_COLUMNS as readonly string[]).includes(m));
-  return { kind, header, missing, missingRequired, excelRows };
+  return { kind, header, missing, missingRequired, optional: optionalColumnsFound(header), excelRows };
 }
 
 async function post<T>(url: string, body: unknown, attempts = 3): Promise<T> {

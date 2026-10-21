@@ -1,5 +1,6 @@
 // Cleaning and derived attributes for the Odoo journal-item (account.move.line) sales export.
 // The SQL functions am_channel / am_route / am_city in db/schema.sql mirror channelOf / routeOf / cityOf here.
+// When the export carries "Invoice Type" and "Product Category", those values win over the derived ones.
 
 export type RawRow = Record<string, unknown>;
 
@@ -65,8 +66,14 @@ export function toYmd(v: unknown): string | null {
   return null;
 }
 
-/** "RC011/2568" → B2C route sale; "S60797" → B2B. */
-export function channelOf(ref: string): "B2B" | "B2C" | "Unknown" {
+/**
+ * Channel: the export's "Invoice Type" when it says B2B or B2C; otherwise from the reference
+ * ("S60797" → B2B, "RC011/2568" → B2C). Mirrors SQL am_channel(ref, typ).
+ */
+export function channelOf(ref: string, invoiceType = ""): "B2B" | "B2C" | "Unknown" {
+  const ty = invoiceType.toUpperCase();
+  if (ty.includes("B2B")) return "B2B";
+  if (ty.includes("B2C")) return "B2C";
   const r = ref.trim();
   if (/^S[0-9]+$/i.test(r)) return "B2B";
   return r ? "B2C" : "Unknown";
@@ -110,6 +117,18 @@ export function deriveProduct(product: string): ProductInfo {
     brand: /\bideal\b/.test(lower) ? "Ideal" : /\blo(a)?vin\b|\bloven\b/.test(lower) ? "Loavin Bake" : /\bhealthy\b/.test(lower) ? "Healthy" : "Other",
   };
 }
+
+/**
+ * Category as written in the export's "Product Category" column. Odoo exports the full path
+ * ("All / Saleable / Bakery"); the last part is the category shown on the dashboard.
+ */
+export function cleanCategory(v: string): string {
+  const parts = v.split("/").map((x) => x.trim()).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : "";
+}
+
+/** The category to show for a line: the export's own value when present, otherwise the one derived from the product code. */
+export const categoryOf = (product: string, fileCategory = "") => cleanCategory(fileCategory) || deriveProduct(product).category;
 
 /** Display name of a product without its [code] prefix. */
 export const productName = (product: string) => deriveProduct(product).name;

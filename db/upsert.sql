@@ -1,18 +1,19 @@
 -- Adds new invoice lines and refreshes changed ones (for example a corrected quantity or price).
 -- Never deletes. Lines that are identical are left untouched.
--- $1..$11 are parallel arrays (one entry per line), $12 is the upload id.
+-- $1..$11 and $13..$14 are parallel arrays (one entry per line), $12 is the upload id.
 WITH incoming AS (
   SELECT *
   FROM unnest($1::text[], $2::text[], $3::date[], $4::text[], $5::text[], $6::numeric[], $7::numeric[],
-              $8::numeric[], $9::numeric[], $10::text[], $11::text[])
-    AS t(line_key, journal_entry, invoice_date, partner, product, quantity, unit_price, subtotal, total, reference, partner_city)
+              $8::numeric[], $9::numeric[], $10::text[], $11::text[], $13::text[], $14::text[])
+    AS t(line_key, journal_entry, invoice_date, partner, product, quantity, unit_price, subtotal, total, reference, partner_city,
+         invoice_type, product_category)
 ),
 written AS (
   INSERT INTO sales_lines AS v
     (line_key, journal_entry, invoice_date, partner, product, quantity, unit_price, subtotal, total, reference, partner_city,
-     first_upload_id, last_upload_id)
+     invoice_type, product_category, first_upload_id, last_upload_id)
   SELECT line_key, journal_entry, invoice_date, partner, product, quantity, unit_price, subtotal, total, reference, partner_city,
-         $12, $12
+         invoice_type, product_category, $12, $12
   FROM incoming
   ON CONFLICT (line_key) DO UPDATE SET
     journal_entry  = EXCLUDED.journal_entry,
@@ -25,12 +26,17 @@ written AS (
     total          = EXCLUDED.total,
     reference      = EXCLUDED.reference,
     partner_city   = EXCLUDED.partner_city,
+    -- An older file without these columns never blanks values a newer file supplied.
+    invoice_type     = CASE WHEN EXCLUDED.invoice_type <> '' THEN EXCLUDED.invoice_type ELSE v.invoice_type END,
+    product_category = CASE WHEN EXCLUDED.product_category <> '' THEN EXCLUDED.product_category ELSE v.product_category END,
     last_upload_id = EXCLUDED.last_upload_id,
     updated_at     = now()
   WHERE (v.journal_entry, v.invoice_date, v.partner, v.product, v.quantity, v.unit_price, v.subtotal, v.total, v.reference, v.partner_city)
         IS DISTINCT FROM
         (EXCLUDED.journal_entry, EXCLUDED.invoice_date, EXCLUDED.partner, EXCLUDED.product, EXCLUDED.quantity, EXCLUDED.unit_price,
          EXCLUDED.subtotal, EXCLUDED.total, EXCLUDED.reference, EXCLUDED.partner_city)
+     OR (EXCLUDED.invoice_type <> '' AND EXCLUDED.invoice_type IS DISTINCT FROM v.invoice_type)
+     OR (EXCLUDED.product_category <> '' AND EXCLUDED.product_category IS DISTINCT FROM v.product_category)
   RETURNING (xmax = 0) AS is_new
 )
 SELECT count(*) FILTER (WHERE is_new)::int     AS inserted,

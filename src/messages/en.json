@@ -98,10 +98,10 @@
     "products": "Products",
     "productsSub": "Click to filter · arrow for the product profile",
     "channel": "B2B vs B2C",
-    "channelSub": "S-references are B2B; route references are B2C",
+    "channelSub": "From the Invoice Type column; references decide only when it is blank",
     "routes": "Sales routes",
     "category": "Product categories",
-    "categorySub": "From the product code (BK, EP, WP)",
+    "categorySub": "From the Product Category column; the product code decides only when it is blank",
     "brand": "Brand",
     "cities": "Cities",
     "citiesSub": "Customer city on the invoice",
@@ -123,7 +123,7 @@
     "linesSub": "Every product line in the current selection · click a row for details",
     "exportRows": "Export {n} lines",
     "linesFooter": "{n} lines · {net} net · {gross} gross",
-    "footnote": "Net is the invoice line subtotal before VAT; gross is the line total including 15% KSA VAT. References like S60797 are B2B sales; route references like AHC019/1167 are B2C. Data runs to {last}."
+    "footnote": "Net is the invoice line subtotal before VAT; gross is the line total including 15% KSA VAT. Channel (B2B/B2C) and product category come from the export's Invoice Type and Product Category columns; when those are blank, S-references count as B2B, route references as B2C, and the category follows the product code. Data runs to {last}."
   },
   "grain": {
     "day": "Daily",
@@ -251,7 +251,7 @@
     "productTitle": "{product} is the best seller ({share})",
     "productBody": "It sold {qty} units for {net}. With {second}, the top two products make {top2} of sales across {n} products. {volume} moves the most units ({volumeQty}).",
     "productBodySame": "It sold {qty} units for {net} and is also the highest-volume item. With {second}, the top two products make {top2} of sales across {n} products.",
-    "channelTitle": "B2C route sales carry {share} of revenue",
+    "channelTitle": "B2C sales carry {share} of revenue",
     "channelBody": "B2C sold {b2c}; B2B sold {b2b} ({b2bShare}). Average net price per unit: B2C {b2cUnit}, B2B {b2bUnit}.",
     "priceTitle": "{product} sells between {lo} and {hi}",
     "priceBody": "{n} different unit prices were charged for this product, a {gap} spread over {qty} units. Check that each customer is on the right price list.",
@@ -321,7 +321,11 @@
     "ignoredHint": "Zero-value lines without a product (tax and receivable lines Odoo adds to each invoice) are not sales and are not stored.",
     "partialKept": "The {n} lines sent before the problem are saved. Upload the same file again to continue; lines already saved will count as unchanged.",
     "stoppedTitle": "Upload stopped.",
-    "resumeHint": "Upload the same file again to continue; lines already saved will count as unchanged."
+    "resumeHint": "Upload the same file again to continue; lines already saved will count as unchanged.",
+    "typeFound": "Invoice Type column found: B2B / B2C taken from the file.",
+    "typeMissing": "No Invoice Type column: B2B / B2C worked out from the reference (S… = B2B).",
+    "categoryFound": "Product Category column found: categories taken from the file.",
+    "categoryMissing": "No Product Category column: category worked out from the product code (BK, EP, WP)."
   },
   "data": {
     "uploadButton": "Upload export",

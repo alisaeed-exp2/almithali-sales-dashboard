@@ -36,10 +36,21 @@ CREATE TABLE IF NOT EXISTS sales_lines (
   updated_at      TIMESTAMPTZ   NOT NULL DEFAULT now()
 );
 
+-- Optional export columns (added 2026-10): when filled in, they win over the rules below.
+ALTER TABLE sales_lines ADD COLUMN IF NOT EXISTS invoice_type     TEXT NOT NULL DEFAULT ''; -- "Invoice Type": B2B or B2C
+ALTER TABLE sales_lines ADD COLUMN IF NOT EXISTS product_category TEXT NOT NULL DEFAULT ''; -- "Product Category"
+
 -- Derived attributes, defined once in SQL so the summary, the filters and the line lists agree.
 -- Channel: a reference like S60797 is a B2B sale; a route reference like AHC019/1167 is B2C.
 CREATE OR REPLACE FUNCTION am_channel(ref text) RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
   SELECT CASE WHEN btrim(coalesce(ref, '')) ~* '^S[0-9]+$' THEN 'B2B' WHEN btrim(coalesce(ref, '')) = '' THEN 'Unknown' ELSE 'B2C' END
+$$;
+-- Channel with the export's "Invoice Type" first: any value containing B2B or B2C is used as given;
+-- a blank or unrecognised type falls back to the reference rule above.
+CREATE OR REPLACE FUNCTION am_channel(ref text, typ text) RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+  SELECT CASE WHEN upper(coalesce(typ, '')) LIKE '%B2B%' THEN 'B2B'
+              WHEN upper(coalesce(typ, '')) LIKE '%B2C%' THEN 'B2C'
+              ELSE am_channel(ref) END
 $$;
 -- Sales route: the part of the reference before "/" (RC011/2568 → RC011); every B2B sale is "B2B direct".
 CREATE OR REPLACE FUNCTION am_route(ref text) RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
@@ -58,7 +69,7 @@ CREATE INDEX IF NOT EXISTS sales_lines_product_idx ON sales_lines (product);
 CREATE INDEX IF NOT EXISTS sales_lines_entry_idx   ON sales_lines (journal_entry);
 CREATE INDEX IF NOT EXISTS sales_lines_route_idx   ON sales_lines (am_route(reference));
 
--- Product attributes parsed from the product name (code, category from the code, brand from the name).
+-- Product attributes: category from the export when given, otherwise from the product code; code and brand from the name.
 CREATE TABLE IF NOT EXISTS products (
   product  TEXT PRIMARY KEY,
   code     TEXT NOT NULL DEFAULT '',
@@ -66,6 +77,8 @@ CREATE TABLE IF NOT EXISTS products (
   category TEXT NOT NULL DEFAULT 'Other',
   brand    TEXT NOT NULL DEFAULT 'Other'
 );
+-- 'file' when the category came from the export's "Product Category" column, 'code' when derived from the product code.
+ALTER TABLE products ADD COLUMN IF NOT EXISTS category_source TEXT NOT NULL DEFAULT 'code';
 
 -- Daily roll-up the dashboard reads instead of individual lines. Rebuilt for the affected days
 -- after every upload batch, so it always matches sales_lines.

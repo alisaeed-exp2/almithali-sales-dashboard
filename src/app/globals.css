@@ -424,6 +424,11 @@ html[dir="rtl"] .foot-company { font-family: var(--font-arabic); }
 .mini-kpis b { overflow-wrap: anywhere; }
 @container (max-width: 30rem) { .clip { max-width: 12rem; } }
 
+.optional-cols { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 0.8rem; color: var(--muted); }
+.optional-cols li::before { content: "○"; margin-inline-end: 0.4rem; }
+.optional-cols li.is-found { color: var(--status-approved); }
+.optional-cols li.is-found::before { content: "✓"; }
+
 /* ---------- responsive ---------- */
 @media (max-width: 1300px) {
   .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }

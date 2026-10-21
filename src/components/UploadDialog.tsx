@@ -155,6 +155,12 @@ export function UploadDialog({ onClose }: { onClose: () => void }) {
               )}
               {preview.kind === "excel" && file && file.size > 8 * 1_048_576 && <div className="notice notice-warn">{t("upload.bigExcel")}</div>}
               {preview.missingRequired.length > 0 && <div className="notice notice-bad">{t("upload.missingRequired", { cols: preview.missingRequired.join(", ") })}</div>}
+              {preview.missingRequired.length === 0 && (
+                <ul className="optional-cols">
+                  <li className={preview.optional.invoiceType ? "is-found" : ""}>{t(preview.optional.invoiceType ? "upload.typeFound" : "upload.typeMissing")}</li>
+                  <li className={preview.optional.productCategory ? "is-found" : ""}>{t(preview.optional.productCategory ? "upload.categoryFound" : "upload.categoryMissing")}</li>
+                </ul>
+              )}
               {preview.missingRequired.length === 0 && preview.missing.length > 0 && (
                 <div className="notice notice-warn">{t("upload.missingOptional", { cols: preview.missing.join(", ") })}</div>
               )}

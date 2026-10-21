@@ -43,7 +43,7 @@ const EXPR: Record<Src, Partial<Record<QDim, string>>> = {
   summary: SUMMARY_EXPR,
   daily: SUMMARY_EXPR,
   inv: { channel: "s.channel", route: "s.route", city: "s.city", partner: "s.partner" },
-  lines: { channel: "am_channel(s.reference)", route: "am_route(s.reference)", city: "am_city(s.partner_city)", partner: "s.partner", ...PRODUCT_EXPR },
+  lines: { channel: "am_channel(s.reference, s.invoice_type)", route: "am_route(s.reference)", city: "am_city(s.partner_city)", partner: "s.partner", ...PRODUCT_EXPR },
 };
 
 const DAY: Record<Src, string> = { summary: "s.day", daily: "s.day", inv: "s.invoice_date", lines: "s.invoice_date" };
@@ -510,7 +510,8 @@ const LINE_SORT: Record<string, string> = {
 };
 
 const LINE_COLS = `s.line_key, s.journal_entry, s.invoice_date::text AS invoice_date, s.partner, s.product, s.quantity::float8 AS quantity,
-  s.unit_price::float8 AS unit_price, s.subtotal::float8 AS subtotal, s.total::float8 AS total, s.reference, s.partner_city`;
+  s.unit_price::float8 AS unit_price, s.subtotal::float8 AS subtotal, s.total::float8 AS total, s.reference, s.partner_city,
+  s.invoice_type, s.product_category`;
 
 export async function runLines(req: QLinesRequest): Promise<QLinesResult> {
   await ensureSchema();
@@ -574,7 +575,7 @@ export async function runInvoices(req: QInvoicesRequest): Promise<QInvoicesResul
   const [rows, count] = await Promise.all([
     q(
       `SELECT s.journal_entry, max(s.invoice_date)::text AS invoice_date, max(s.reference) AS reference, max(s.partner) AS partner,
-              max(am_city(s.partner_city)) AS city, max(am_channel(s.reference)) AS channel, max(am_route(s.reference)) AS route,
+              max(am_city(s.partner_city)) AS city, max(am_channel(s.reference, s.invoice_type)) AS channel, max(am_route(s.reference)) AS route,
               count(*)::int AS lines, sum(s.quantity)::float8 AS qty, sum(s.subtotal)::float8 AS net, sum(s.total)::float8 AS gross
          FROM ${from} ${w}
         GROUP BY s.journal_entry
@@ -608,7 +609,7 @@ export function exportCsv(filters: QFilters): ReadableStream<Uint8Array> {
         const extra = last ? [`(s.invoice_date, s.line_key) > (${p.add(last.d)}::date, ${p.add(last.k)})`] : [];
         const w = where(f, "lines", p, undefined, extra);
         const rows = await q(
-          `SELECT ${LINE_COLS}, am_channel(s.reference) AS channel, am_route(s.reference) AS route, am_city(s.partner_city) AS city,
+          `SELECT ${LINE_COLS}, am_channel(s.reference, s.invoice_type) AS channel, am_route(s.reference) AS route, am_city(s.partner_city) AS city,
                   coalesce(p.category, 'Other') AS category, coalesce(p.brand, 'Other') AS brand
              FROM ${fromOf("lines", f, p)} ${w}
             ORDER BY s.invoice_date, s.line_key LIMIT 10000`,

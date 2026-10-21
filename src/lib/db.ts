@@ -41,20 +41,34 @@ const columns = (b: SaleRow[]) => [
   b.map((r) => r.reference),
   b.map((r) => r.partner_city),
 ];
+// Appended after the upload id ($12) as $13 and $14.
+const extraColumns = (b: SaleRow[]) => [b.map((r) => r.invoice_type), b.map((r) => r.product_category)];
 
 type Q = Pick<PoolClient, "query">;
 
-/** Add or refresh product attributes (code, name, category, brand). */
-async function upsertProducts(db: Q, products: string[]) {
+/**
+ * Add or refresh product attributes. The category comes from the export's "Product Category" when a file supplied one
+ * (the most recent upload wins); a product never given one gets the category derived from its code.
+ * `fileCategory` maps product → category from the file ("" or absent = not supplied).
+ */
+async function upsertProducts(db: Q, products: string[], fileCategory: Map<string, string> = new Map()) {
   const list = [...new Set(products)];
   if (!list.length) return;
-  const info = list.map((p) => ({ product: p, ...deriveProduct(p) }));
+  const info = list.map((p) => {
+    const d = deriveProduct(p);
+    const fc = fileCategory.get(p) ?? "";
+    return { product: p, code: d.code, name: d.name, category: fc || d.category, brand: d.brand, source: fc ? "file" : "code" };
+  });
   await db.query(
-    `INSERT INTO products (product, code, name, category, brand)
-     SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[])
-     ON CONFLICT (product) DO UPDATE SET code = EXCLUDED.code, name = EXCLUDED.name, category = EXCLUDED.category, brand = EXCLUDED.brand
-     WHERE (products.code, products.name, products.category, products.brand) IS DISTINCT FROM (EXCLUDED.code, EXCLUDED.name, EXCLUDED.category, EXCLUDED.brand)`,
-    [info.map((i) => i.product), info.map((i) => i.code), info.map((i) => i.name), info.map((i) => i.category), info.map((i) => i.brand)],
+    `INSERT INTO products (product, code, name, category, brand, category_source)
+     SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[])
+     ON CONFLICT (product) DO UPDATE SET code = EXCLUDED.code, name = EXCLUDED.name, brand = EXCLUDED.brand,
+       category = CASE WHEN EXCLUDED.category_source = 'file' OR products.category_source <> 'file' THEN EXCLUDED.category ELSE products.category END,
+       category_source = CASE WHEN EXCLUDED.category_source = 'file' THEN 'file' ELSE products.category_source END
+     WHERE (products.code, products.name, products.brand) IS DISTINCT FROM (EXCLUDED.code, EXCLUDED.name, EXCLUDED.brand)
+        OR (EXCLUDED.category_source = 'file' AND (products.category, products.category_source) IS DISTINCT FROM (EXCLUDED.category, 'file'))
+        OR (products.category_source <> 'file' AND products.category IS DISTINCT FROM EXCLUDED.category)`,
+    [info.map((i) => i.product), info.map((i) => i.code), info.map((i) => i.name), info.map((i) => i.category), info.map((i) => i.brand), info.map((i) => i.source)],
   );
 }
 
@@ -71,7 +85,7 @@ export async function refreshDays(db: Q, days: string[], entries: string[] = [])
   await db.query(`DELETE FROM invoices WHERE invoice_date = ANY($1::date[]) OR journal_entry = ANY($2::text[])`, [sorted, entries]);
   await db.query(
     `INSERT INTO daily_summary (day, channel, route, partner, city, product, unit_price, lines, qty, net, gross)
-     SELECT invoice_date, am_channel(reference), am_route(reference), partner, am_city(partner_city), product, unit_price,
+     SELECT invoice_date, am_channel(reference, invoice_type), am_route(reference), partner, am_city(partner_city), product, unit_price,
             count(*), sum(quantity), sum(subtotal), sum(total)
        FROM sales_lines WHERE ${inDays}
       GROUP BY 1, 2, 3, 4, 5, 6, 7`,
@@ -81,7 +95,7 @@ export async function refreshDays(db: Q, days: string[], entries: string[] = [])
   await db.query(
     `INSERT INTO invoices (journal_entry, invoice_date, reference, partner, city, channel, route, lines, qty, net, gross)
      SELECT journal_entry, max(invoice_date), max(reference), max(partner), max(am_city(partner_city)),
-            am_channel(max(reference)), am_route(max(reference)), count(*), sum(quantity), sum(subtotal), sum(total)
+            am_channel(max(reference), max(invoice_type)), am_route(max(reference)), count(*), sum(quantity), sum(subtotal), sum(total)
        FROM sales_lines WHERE ${inDays}
       GROUP BY journal_entry
      ON CONFLICT (journal_entry) DO UPDATE SET invoice_date = EXCLUDED.invoice_date, reference = EXCLUDED.reference, partner = EXCLUDED.partner,
@@ -141,14 +155,14 @@ export async function refreshDirtyMonths(): Promise<number> {
 async function refreshAll(db: Q) {
   await db.query(
     `INSERT INTO daily_summary (day, channel, route, partner, city, product, unit_price, lines, qty, net, gross)
-     SELECT invoice_date, am_channel(reference), am_route(reference), partner, am_city(partner_city), product, unit_price,
+     SELECT invoice_date, am_channel(reference, invoice_type), am_route(reference), partner, am_city(partner_city), product, unit_price,
             count(*), sum(quantity), sum(subtotal), sum(total)
        FROM sales_lines GROUP BY 1, 2, 3, 4, 5, 6, 7`,
   );
   await db.query(
     `INSERT INTO invoices (journal_entry, invoice_date, reference, partner, city, channel, route, lines, qty, net, gross)
      SELECT journal_entry, max(invoice_date), max(reference), max(partner), max(am_city(partner_city)),
-            am_channel(max(reference)), am_route(max(reference)), count(*), sum(quantity), sum(subtotal), sum(total)
+            am_channel(max(reference), max(invoice_type)), am_route(max(reference)), count(*), sum(quantity), sum(subtotal), sum(total)
        FROM sales_lines GROUP BY journal_entry`,
   );
   await db.query(
@@ -158,8 +172,12 @@ async function refreshAll(db: Q) {
        FROM daily_summary GROUP BY 1, 2, 3, 4, 5, 6, 7`,
   );
   await db.query(`DELETE FROM dirty_months`);
-  const p = await db.query(`SELECT DISTINCT product FROM sales_lines`);
-  await upsertProducts(db, p.rows.map((r) => r.product as string));
+  const p = await db.query(
+    `SELECT product, (array_agg(product_category ORDER BY invoice_date DESC, updated_at DESC) FILTER (WHERE product_category <> ''))[1] AS category
+       FROM sales_lines GROUP BY product`,
+  );
+  await db.query(`UPDATE products SET category_source = 'code'`); // re-decided below from the stored lines
+  await upsertProducts(db, p.rows.map((r) => r.product as string), new Map(p.rows.filter((r) => r.category).map((r) => [r.product as string, r.category as string])));
 }
 
 /**
@@ -169,11 +187,11 @@ async function refreshAll(db: Q) {
 async function writeBatch(db: Q, rows: SaleRow[], uploadId: number) {
   const keys = rows.map((r) => r.line_key);
   const before = await db.query(`SELECT DISTINCT invoice_date::text AS d FROM sales_lines WHERE line_key = ANY($1::text[])`, [keys]);
-  const res = await db.query(UPSERT(), [...columns(rows), uploadId]);
+  const res = await db.query(UPSERT(), [...columns(rows), uploadId, ...extraColumns(rows)]);
   const days = new Set<string>(before.rows.map((r) => r.d as string));
   rows.forEach((r) => days.add(r.invoice_date));
   await refreshDays(db, [...days], [...new Set(rows.map((r) => r.journal_entry))]);
-  await upsertProducts(db, rows.map((r) => r.product));
+  await upsertProducts(db, rows.map((r) => r.product), new Map(rows.filter((r) => r.product_category).map((r) => [r.product, r.product_category])));
   return { inserted: res.rows[0].inserted as number, updated: res.rows[0].updated as number };
 }
 

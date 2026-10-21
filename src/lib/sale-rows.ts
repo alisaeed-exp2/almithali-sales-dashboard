@@ -1,6 +1,6 @@
-// Maps an Odoo journal-item export row to a database row (the 10 export columns + the line key).
+// Maps an Odoo journal-item export row to a database row (the export columns + the line key).
 // Used in the browser to prepare an upload and on the server to validate it again.
-import { num, pick, str, toYmd, type RawRow } from "./normalize";
+import { cleanCategory, num, pick, str, toYmd, type RawRow } from "./normalize";
 
 /** The columns every export contains, and that the sales_lines table stores. */
 export const EXPORT_COLUMNS = [
@@ -15,6 +15,16 @@ export const EXPORT_COLUMNS = [
   "Journal Entry/Reference",
   "Journal Entry/Partner/City",
 ] as const;
+
+/**
+ * Optional columns. When present and filled in, they are used as given; when missing or blank the dashboard
+ * falls back to its own rules (channel from the reference, category from the product code).
+ * Each accepts a few header spellings (case, spaces and punctuation are ignored).
+ */
+export const OPTIONAL_COLUMNS = {
+  invoiceType: ["Invoice Type", "Sales Type", "Customer Type", "Type", "Channel"],
+  productCategory: ["Product Category", "Product/Product Category", "Category"],
+} as const;
 
 export const REQUIRED_COLUMNS = ["Journal Entry", "Invoice/Bill Date", "Product", "Subtotal"] as const;
 
@@ -33,6 +43,8 @@ export interface SaleRow {
   total: number;
   reference: string;
   partner_city: string;
+  invoice_type: string; // "" when the file has no Invoice Type
+  product_category: string; // "" when the file has no Product Category
 }
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -41,6 +53,21 @@ const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 export function missingColumns(headers: string[]): string[] {
   const have = new Set(headers.map(norm));
   return EXPORT_COLUMNS.filter((c) => !have.has(norm(c)));
+}
+
+/** Which optional columns the file has (so the upload dialog can say what will be used). */
+export function optionalColumnsFound(headers: string[]): { invoiceType: boolean; productCategory: boolean } {
+  const have = new Set(headers.map(norm));
+  return {
+    invoiceType: OPTIONAL_COLUMNS.invoiceType.some((c) => have.has(norm(c))),
+    productCategory: OPTIONAL_COLUMNS.productCategory.some((c) => have.has(norm(c))),
+  };
+}
+
+/** B2B / B2C from the Invoice Type cell; anything else is left blank so the reference rule applies. */
+export function cleanInvoiceType(v: string): string {
+  const u = v.toUpperCase();
+  return u.includes("B2B") ? "B2B" : u.includes("B2C") ? "B2C" : "";
 }
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
@@ -104,6 +131,8 @@ export function toSaleRows(raw: RawRow[]): ConvertResult {
       total: r2(total),
       reference: str(pick(r, "Journal Entry/Reference", "Reference")) || refFromEntry(entry),
       partner_city: str(pick(r, "Journal Entry/Partner/City", "City")),
+      invoice_type: cleanInvoiceType(str(pick(r, ...OPTIONAL_COLUMNS.invoiceType))),
+      product_category: cleanCategory(str(pick(r, ...OPTIONAL_COLUMNS.productCategory))).slice(0, 120),
     };
     const prev = byKey.get(key);
     if (prev) {
@@ -146,5 +175,7 @@ export function checkRow(x: unknown): SaleRow | null {
     total: n("total", 2),
     reference: s("reference", 120),
     partner_city: s("partner_city", 120),
+    invoice_type: cleanInvoiceType(s("invoice_type", 20)),
+    product_category: s("product_category", 120),
   };
 }

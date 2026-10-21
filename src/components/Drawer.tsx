@@ -2,7 +2,7 @@
 import { useEffect, useMemo, type ReactNode } from "react";
 import type { Metric, QDim, QFilters, QLine } from "@/lib/dash-types";
 import { fetchLines, fetchQuery, localDate, toAgg, toPoint, useQuery } from "@/lib/client-data";
-import { channelOf, cityOf, deriveProduct, routeOf } from "@/lib/normalize";
+import { categoryOf, channelOf, cityOf, deriveProduct, routeOf } from "@/lib/normalize";
 import { fmtDate, fmtInt, fmtMoney, fmtMoneyExact, fmtPct, fmtPrice, fmtQty } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { BarList } from "./charts/BarList";
@@ -198,7 +198,7 @@ export function InvoiceDrawer({ entry, onClose, onDrill, onLine }: { entry: stri
                 [
                   `${dimLabel("route")} · ${dimLabel("channel")}`,
                   <>
-                    {link("route", routeOf(first.reference), "num")} · {link("channel", channelOf(first.reference))}
+                    {link("route", routeOf(first.reference), "num")} · {link("channel", channelOf(first.reference, first.invoice_type))}
                   </>,
                 ],
                 [t("drawer.totals"), <span className="num">{t("drawer.invoiceTotals", { lines: fmtInt(rows.length), qty: fmtQty(sum((l) => l.quantity)) })}</span>],
@@ -276,10 +276,10 @@ export function LineDrawer({ l, onClose, onDrill, onInvoice }: { l: QLine; onClo
     ],
     [t("drawer.date"), <span className="num">{fmtDate(localDate(l.invoice_date), intl)}</span>],
     [dimLabel("partner"), link("partner", l.partner)],
-    [`${dimLabel("route")} · ${dimLabel("channel")}`, <>{link("route", routeOf(l.reference))} · {link("channel", channelOf(l.reference))}</>],
+    [`${dimLabel("route")} · ${dimLabel("channel")}`, <>{link("route", routeOf(l.reference))} · {link("channel", channelOf(l.reference, l.invoice_type))}</>],
     [dimLabel("city"), link("city", cityOf(l.partner_city))],
     [dimLabel("product"), link("product", l.product)],
-    [t("drawer.codeCategoryBrand"), <>{info.code || "—"} · {link("category", info.category)} · {link("brand", info.brand)}</>],
+    [t("drawer.codeCategoryBrand"), <>{info.code || "—"} · {link("category", categoryOf(l.product, l.product_category))} · {link("brand", info.brand)}</>],
     [t("table.qty"), <span className="num">{fmtQty(l.quantity)}</span>],
     [t("table.price"), <span className="num">{fmtPrice(l.unit_price)}</span>],
     [t("drawer.net"), <span className="num">{fmtMoneyExact(l.subtotal)}</span>],

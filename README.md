@@ -18,6 +18,15 @@ Requires Node 20+, `DATABASE_URL` (PostgreSQL) and `UPLOAD_PASSWORD` (see `.env.
 Columns (exactly as Odoo exports them): `Journal Entry`, `Invoice/Bill Date`, `Partner`, `Product`, `Quantity`,
 `Unit Price`, `Subtotal`, `Total`, `Journal Entry/Reference`, `Journal Entry/Partner/City`.
 
+Two optional columns take priority over the dashboard's own rules when they are filled in:
+
+| Column (any of these headers) | Values | When missing or blank |
+|---|---|---|
+| `Invoice Type` (also `Sales Type`, `Customer Type`, `Type`, `Channel`) | anything containing `B2B` or `B2C` | worked out from the reference (below) |
+| `Product Category` (also `Product/Product Category`, `Category`) | the category; an Odoo path like `All / Saleable / Bread` keeps its last part | worked out from the product code (below) |
+
+A product's category is the one the most recent file gave it. Uploading an older file without these columns never erases values a newer file supplied. The upload dialog says which of the two columns it found.
+
 - A line is identified by **Journal Entry + Product**: re-uploading the same invoice refreshes its lines instead of adding them twice. The same product twice on one invoice is merged (quantities and amounts added).
 - Blank rows and zero-value lines without a product (the tax/receivable lines Odoo adds to every invoice) are ignored; the upload dialog counts them.
 - Dates are read as Odoo's US format (`10/21/2026`, month first); day-first dates are recognised when the day is above 12.
@@ -26,14 +35,14 @@ Columns (exactly as Odoo exports them): `Journal Entry`, `Invoice/Bill Date`, `P
 
 | Field | How |
 |---|---|
-| Channel | Reference like `S60797` → **B2B**; route reference like `AHC019/1167` → **B2C** |
+| Channel | `Invoice Type` column; if blank: reference like `S60797` → **B2B**, route reference like `AHC019/1167` → **B2C** |
 | Sales route | Part of the reference before `/` (`RC011/2568` → `RC011`); all B2B sales are "B2B direct" |
 | City | Customer city, case-normalised (`DAMMAM` = `Dammam`); empty or `0` → Unknown |
-| Product code / category | From `[FGP-BK-00184]`: `BK` Bakery, `EP` Sweets & pastries, `WP` Cakes & muffins |
+| Product category | `Product Category` column; if blank, from the code `[FGP-BK-00184]`: `BK` Bakery, `EP` Sweets & pastries, `WP` Cakes & muffins |
 | Brand | From the product name: Ideal, Loavin Bake, Healthy, otherwise Other |
 | Net / VAT / Gross | Net = `Subtotal`; Gross = `Total` (incl. 15% VAT); VAT = Total − Subtotal |
 
-Channel, route and city are SQL functions (`am_channel`, `am_route`, `am_city` in `db/schema.sql`) mirrored in `src/lib/normalize.ts`.
+Channel, route and city are SQL functions (`am_channel`, `am_route`, `am_city` in `db/schema.sql`) mirrored in `src/lib/normalize.ts`. `sales_lines` stores the two optional columns as `invoice_type` and `product_category`.
 
 ## Data: PostgreSQL, append-only uploads, summaries
 

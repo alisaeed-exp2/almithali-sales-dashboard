@@ -128,6 +128,8 @@ export interface QLine {
   total: number;
   reference: string;
   partner_city: string;
+  invoice_type: string; // from the export, "" when not supplied
+  product_category: string; // from the export, "" when not supplied
 }
 
 export type QLineSort = "date" | "invoice" | "partner" | "product" | "qty" | "price" | "net";
