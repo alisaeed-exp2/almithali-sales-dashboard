@@ -1,0 +1,33 @@
+{
+  "name": "almithali-sales-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Executive sales dashboard for Almithali Factory (Odoo journal-item exports)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "db:init": "node scripts/db-init.mjs"
+  },
+  "dependencies": {
+    "@fontsource/lora": "^5.0.0",
+    "@fontsource/nunito-sans": "^5.0.0",
+    "@fontsource/tajawal": "^5.0.0",
+    "next": "^15.5.0",
+    "pg": "^8.13.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/pg": "^8.11.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5.6"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
